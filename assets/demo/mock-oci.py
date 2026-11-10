@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A tiny stand-in for the OCI API, for recording the README GIF.
+"""A tiny stand-in for the OCI API, for recording the README GIF and trying `watch`.
 
 Answers the calls `oci-free-keeper check` makes with two made-up instances:
 arm-free-1 (A1, memory keeps it busy) and micro-1 (E2.1.Micro, idle).
@@ -9,6 +9,7 @@ It does not check signatures. Not for anything but demos.
 """
 
 import json
+import os
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -50,7 +51,14 @@ class Handler(BaseHTTPRequestHandler):
         elif path.endswith("/compartments"):
             self.reply(200, [])
         elif path.endswith("/instances"):
-            self.reply(200, INSTANCES)
+            # MOCK_GONE=micro-1 drops that instance, as if it was terminated or reclaimed.
+            gone = os.environ.get("MOCK_GONE", "")
+            self.reply(200, [i for i in INSTANCES if i["displayName"] != gone])
+        elif path.endswith("/availabilityDomains"):
+            self.reply(200, [{"name": "Abcd:EU-AMSTERDAM-1-AD-1"}])
+        elif path.endswith("/bootVolumes"):
+            self.reply(200, [{"id": "ocid1.bootvolume.oc1.eu-amsterdam-1.micro1boot", "displayName": "micro-1 (Boot Volume)",
+                              "sizeInGBs": 47, "lifecycleState": "AVAILABLE"}])
         else:
             self.reply(404, {"code": "NotAuthorizedOrNotFound", "message": path})
 

@@ -10,6 +10,9 @@ use crate::verdict::{Verdict, assess};
 /// One instance in the report.
 #[derive(Debug, Clone, Serialize)]
 pub struct Row {
+    /// OCID — kept out of the JSON report, used by `watch` to follow an instance.
+    #[serde(skip)]
+    pub id: String,
     /// Console name, or the end of the OCID.
     pub name: String,
     /// Shape.
@@ -74,6 +77,7 @@ pub fn check(s: &Snapshot, warn_percent: f64) -> Report {
             };
             let a = assess(&i.shape, &i.lifecycle_state, usage.as_ref(), warn_percent);
             Row {
+                id: i.id.clone(),
                 name: i.name(),
                 shape: i.shape.clone(),
                 state: i.lifecycle_state.clone(),

@@ -2,8 +2,38 @@
 //!
 //! Exit codes (`check`): 0 all safe, 1 close or unknown, 2 at risk or stopped, 3 could not run.
 
+/// `println!` / `print!` that exit quietly when stdout is a closed pipe (`… | head -1`),
+/// the way `cat` and `grep` do, instead of panicking. Declared before the modules so it
+/// shadows the std macros everywhere in the binary.
+macro_rules! println {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        if let Err(e) = writeln!(std::io::stdout(), $($arg)*) {
+            crate::stdout_failed(e);
+        }
+    }};
+}
+macro_rules! print {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        if let Err(e) = write!(std::io::stdout(), $($arg)*) {
+            crate::stdout_failed(e);
+        }
+    }};
+}
+
+/// A failed write to stdout: a closed pipe ends the program quietly with 141 (128 + SIGPIPE,
+/// what a shell reports for a tool killed by SIGPIPE); anything else is a real error.
+fn stdout_failed(e: std::io::Error) -> ! {
+    if e.kind() == std::io::ErrorKind::BrokenPipe {
+        std::process::exit(141);
+    }
+    panic!("failed printing to stdout: {e}");
+}
+
 mod output;
 mod update;
+mod watch;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -22,11 +52,7 @@ const CANNOT_RUN: u8 = 3;
 /// Oracle's rule: CPU (95th percentile), network and memory (A1 only) all below 20% means idle.
 /// Read-only. Exit codes: 0 all safe, 1 close or unknown, 2 at risk or stopped, 3 could not run.
 #[derive(Debug, Parser)]
-#[command(
-    name = "oci-free-keeper",
-    version,
-    args_conflicts_with_subcommands = true
-)]
+#[command(name = "oci-free-keeper", version)]
 struct Args {
     #[command(subcommand)]
     command: Option<Command>,
@@ -52,6 +78,8 @@ struct Args {
 enum Command {
     /// How close each Always Free instance is to the idle rule (the default).
     Check(CheckArgs),
+    /// Look every hour and notify when an instance stops, disappears, or its verdict changes.
+    Watch(watch::WatchArgs),
 }
 
 #[derive(Debug, Clone, ClapArgs)]
@@ -97,6 +125,7 @@ fn main() -> ExitCode {
 fn run(args: &Args) -> Result<u8> {
     let check = match &args.command {
         Some(Command::Check(c)) => c,
+        Some(Command::Watch(w)) => return watch::run(&client(args)?, w),
         None => &args.check,
     };
     if !(rules::IDLE_PERCENT..=100.0).contains(&check.warn_threshold) {
@@ -105,18 +134,7 @@ fn run(args: &Args) -> Result<u8> {
             rules::IDLE_PERCENT
         );
     }
-    let path = match &args.oci_config {
-        Some(p) => p.clone(),
-        None => {
-            Profile::default_path().context("cannot find your home directory; pass --oci-config")?
-        }
-    };
-    let profile = Profile::load(&path, &args.profile)?;
-    let client = Client::builder(&profile)
-        .user_agent(concat!("oci-free-keeper/", env!("CARGO_PKG_VERSION")))
-        // A local mock of the OCI API for tests and demos.
-        .endpoint(std::env::var("OCI_FREE_KEEPER_ENDPOINT").ok())
-        .build()?;
+    let client = client(args)?;
 
     let mut snapshot = api::collect(&client, time::now())?;
     if let Some(filter) = &check.instance {
@@ -134,4 +152,20 @@ fn run(args: &Args) -> Result<u8> {
         print!("{}", output::text(&report));
     }
     Ok(report.exit_code())
+}
+
+/// The signed OCI client for the chosen profile.
+fn client(args: &Args) -> Result<Client> {
+    let path = match &args.oci_config {
+        Some(p) => p.clone(),
+        None => {
+            Profile::default_path().context("cannot find your home directory; pass --oci-config")?
+        }
+    };
+    let profile = Profile::load(&path, &args.profile)?;
+    Ok(Client::builder(&profile)
+        .user_agent(concat!("oci-free-keeper/", env!("CARGO_PKG_VERSION")))
+        // A local mock of the OCI API for tests and demos.
+        .endpoint(std::env::var("OCI_FREE_KEEPER_ENDPOINT").ok())
+        .build()?)
 }

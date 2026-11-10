@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 — 2026-11-10
+
+- README: links to the other DeepLab OCI tools and the crate they share.
+- `watch`: looks every hour (`--interval`) and notifies when an instance is gone, stopped or
+  running again, or its idle verdict changes — only on changes, remembered in the cache folder.
+  A gone instance's leftover boot volume is pointed out with how to bring it back.
+  Desktop notifications, and `--webhook` for ntfy, Slack, Discord or Telegram. `--once` for cron:
+  exit 2 when an instance is gone, stopped or newly at risk.
+- Global options (`--oci-config`, `--profile`) work before the subcommand too.
+- README: install with Homebrew, the installer scripts or `cargo install`; how updating works.
+- Output into a closed pipe (`… | head -1`) ends quietly with exit code 141 instead of a panic.
+
 ## 0.1.2 — 2026-11-10
 
 - Update notice: at most once a day the binary checks GitHub for a newer release and

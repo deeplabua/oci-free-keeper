@@ -27,6 +27,56 @@ pub struct Snapshot {
     pub instances: Vec<Observed>,
     /// End of the window, seconds since the epoch.
     pub window_end: u64,
+    /// The root compartment and every active one under it.
+    pub compartments: Vec<String>,
+}
+
+/// A boot volume that outlived its instance.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Leftover {
+    /// e.g. `arm-free-1 (Boot Volume)`.
+    pub name: String,
+    /// OCID.
+    pub id: String,
+    /// Size, GB.
+    pub size_gb: Option<f64>,
+}
+
+/// Boot volumes in the home region whose name starts with `instance_name` — by default OCI names
+/// them `<instance> (Boot Volume)`, and they can outlive a terminated instance.
+pub fn leftover_boot_volumes(
+    client: &Client,
+    snapshot: &Snapshot,
+    instance_name: &str,
+) -> Result<Vec<Leftover>> {
+    let home = client.in_region(snapshot.home_region.clone());
+    let tenancy = encode(home.tenancy());
+    let ads: Vec<Value> = list_all(
+        &home,
+        "identity",
+        &format!("/20160918/availabilityDomains?compartmentId={tenancy}"),
+    )?;
+    let mut found = Vec::new();
+    for ad in ads.iter().filter_map(|a| a["name"].as_str()) {
+        for c in &snapshot.compartments {
+            let path = format!(
+                "/20160918/bootVolumes?compartmentId={}&availabilityDomain={}",
+                encode(c),
+                encode(ad)
+            );
+            for v in list_all::<Value>(&home, "iaas", &path)? {
+                let name = v["displayName"].as_str().unwrap_or_default();
+                if v["lifecycleState"] == "AVAILABLE" && name.starts_with(instance_name) {
+                    found.push(Leftover {
+                        name: name.to_owned(),
+                        id: v["id"].as_str().unwrap_or_default().to_owned(),
+                        size_gb: v["sizeInGBs"].as_f64(),
+                    });
+                }
+            }
+        }
+    }
+    Ok(found)
 }
 
 /// Read the instances of the home region and their last 7 days of metrics, ending `now`.
@@ -99,6 +149,7 @@ pub fn collect(client: &Client, now: u64) -> Result<Snapshot> {
         payment_model,
         instances: observed,
         window_end: end,
+        compartments,
     })
 }
 
