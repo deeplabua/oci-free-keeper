@@ -481,7 +481,7 @@ dependencies = [
 
 [[package]]
 name = "oci-free-keeper"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -496,7 +496,7 @@ dependencies = [
 
 [[package]]
 name = "oci-free-keeper-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "oci-request-signer",
  "serde",

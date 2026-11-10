@@ -31,6 +31,7 @@ fn stdout_failed(e: std::io::Error) -> ! {
     panic!("failed printing to stdout: {e}");
 }
 
+mod backup;
 mod output;
 mod update;
 mod watch;
@@ -80,6 +81,9 @@ enum Command {
     Check(CheckArgs),
     /// Look every hour and notify when an instance stops, disappears, or its verdict changes.
     Watch(watch::WatchArgs),
+    /// Back up each Always Free instance's boot volume, within the 5 free backups. Writes to the
+    /// account: creates backups, and deletes older ones keeper made itself.
+    Backup(backup::BackupArgs),
 }
 
 #[derive(Debug, Clone, ClapArgs)]
@@ -126,6 +130,7 @@ fn run(args: &Args) -> Result<u8> {
     let check = match &args.command {
         Some(Command::Check(c)) => c,
         Some(Command::Watch(w)) => return watch::run(&client(args)?, w),
+        Some(Command::Backup(b)) => return Ok(backup::run(&client(args)?, b)?.code),
         None => &args.check,
     };
     if !(rules::IDLE_PERCENT..=100.0).contains(&check.warn_threshold) {

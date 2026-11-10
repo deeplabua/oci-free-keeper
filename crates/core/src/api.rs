@@ -1,9 +1,11 @@
-//! Reads instances and their metrics — GET requests and Monitoring queries only.
+//! Reads instances and their metrics — GET requests and Monitoring queries only — and, for the
+//! explicit `backup` command only, creates and deletes boot volume backups keeper made itself.
 
 use oci_request_signer::{Client, Method, OCI_DOMAIN, Result, encode};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
+use crate::backup::{self, Backup};
 use crate::model::{Instance, Usage};
 use crate::{rules, stats, time};
 
@@ -79,8 +81,18 @@ pub fn leftover_boot_volumes(
     Ok(found)
 }
 
-/// Read the instances of the home region and their last 7 days of metrics, ending `now`.
-pub fn collect(client: &Client, now: u64) -> Result<Snapshot> {
+/// The home region, every compartment, and the instances there — no metrics.
+pub struct Inventory {
+    /// Home region.
+    pub home_region: String,
+    /// The root compartment and every active one under it.
+    pub compartments: Vec<String>,
+    /// Non-terminated instances of the home region.
+    pub instances: Vec<Instance>,
+}
+
+/// Instances of the home region, all compartments.
+pub fn inventory(client: &Client) -> Result<Inventory> {
     let tenancy = client.tenancy().to_owned();
     let regions: Vec<Value> = client.get(
         "identity",
@@ -113,6 +125,22 @@ pub fn collect(client: &Client, now: u64) -> Result<Snapshot> {
         )?;
         instances.extend(list.into_iter().filter(Instance::exists));
     }
+    Ok(Inventory {
+        home_region,
+        compartments,
+        instances,
+    })
+}
+
+/// Read the instances of the home region and their last 7 days of metrics, ending `now`.
+pub fn collect(client: &Client, now: u64) -> Result<Snapshot> {
+    let Inventory {
+        home_region,
+        compartments,
+        instances,
+    } = inventory(client)?;
+    let tenancy = client.tenancy().to_owned();
+    let home = client.in_region(home_region.clone());
 
     // Snap the window to whole 5-minute steps so consecutive runs line up.
     let end = now - now % rules::RESOLUTION_SECS;
@@ -151,6 +179,98 @@ pub fn collect(client: &Client, now: u64) -> Result<Snapshot> {
         window_end: end,
         compartments,
     })
+}
+
+/// The boot volume attached to an instance, if any.
+pub fn boot_volume_of(client: &Client, region: &str, i: &Instance) -> Result<Option<String>> {
+    let Some(ad) = &i.availability_domain else {
+        return Ok(None);
+    };
+    let home = client.in_region(region.to_owned());
+    let path = format!(
+        "/20160918/bootVolumeAttachments?availabilityDomain={}&compartmentId={}&instanceId={}",
+        encode(ad),
+        encode(&i.compartment_id),
+        encode(&i.id)
+    );
+    Ok(list_all::<Value>(&home, "iaas", &path)?
+        .into_iter()
+        .find(|a| a["lifecycleState"] == "ATTACHED")
+        .and_then(|a| a["bootVolumeId"].as_str().map(str::to_owned)))
+}
+
+/// Every boot volume backup in the home region, and how many block volume backups are live
+/// (they count against the same free 5).
+pub fn backups(
+    client: &Client,
+    region: &str,
+    compartments: &[String],
+) -> Result<(Vec<Backup>, usize)> {
+    let home = client.in_region(region.to_owned());
+    let mut boot = Vec::new();
+    let mut block = 0;
+    for c in compartments {
+        let c = encode(c);
+        boot.extend(list_all::<Backup>(
+            &home,
+            "iaas",
+            &format!("/20160918/bootVolumeBackups?compartmentId={c}"),
+        )?);
+        block += list_all::<Value>(
+            &home,
+            "iaas",
+            &format!("/20160918/volumeBackups?compartmentId={c}"),
+        )?
+        .iter()
+        .filter(|b| {
+            !matches!(
+                b["lifecycleState"].as_str(),
+                Some("TERMINATED" | "TERMINATING")
+            )
+        })
+        .count();
+    }
+    Ok((boot, block))
+}
+
+/// Start a full backup of a boot volume, tagged as keeper's.
+pub fn create_backup(
+    client: &Client,
+    region: &str,
+    boot_volume_id: &str,
+    name: &str,
+) -> Result<Backup> {
+    client.in_region(region.to_owned()).post(
+        "iaas",
+        "/20160918/bootVolumeBackups",
+        &json!({
+            "bootVolumeId": boot_volume_id,
+            "displayName": name,
+            "type": "FULL",
+            "freeformTags": { backup::TAG_KEY: backup::TAG_VALUE },
+        }),
+        &[],
+    )
+}
+
+/// One backup, e.g. to wait until it is `AVAILABLE`.
+pub fn get_backup(client: &Client, region: &str, id: &str) -> Result<Backup> {
+    client.in_region(region.to_owned()).get(
+        "iaas",
+        &format!("/20160918/bootVolumeBackups/{}", encode(id)),
+    )
+}
+
+/// Delete a backup. Callers pass only keeper's own (see [`Backup::ours`]).
+pub fn delete_backup(client: &Client, region: &str, id: &str) -> Result<()> {
+    client
+        .in_region(region.to_owned())
+        .delete(
+            "iaas",
+            &format!("/20160918/bootVolumeBackups/{}", encode(id)),
+            &[],
+        )
+        .map(|_| ())
 }
 
 /// CPU p95, memory mean, network mean over the window.

@@ -17,11 +17,26 @@ REGION = "eu-amsterdam-1"
 T = "ocid1.tenancy.oc1..aaaademotenancy"
 INSTANCES = [
     {"id": "ocid1.instance.oc1.eu-amsterdam-1.armfree1", "compartmentId": T, "displayName": "arm-free-1",
-     "shape": "VM.Standard.A1.Flex", "lifecycleState": "RUNNING", "shapeConfig": {"ocpus": 4, "memoryInGBs": 24}},
+     "shape": "VM.Standard.A1.Flex", "lifecycleState": "RUNNING", "shapeConfig": {"ocpus": 4, "memoryInGBs": 24},
+     "availabilityDomain": "Abcd:EU-AMSTERDAM-1-AD-1"},
     {"id": "ocid1.instance.oc1.eu-amsterdam-1.micro1", "compartmentId": T, "displayName": "micro-1",
-     "shape": "VM.Standard.E2.1.Micro", "lifecycleState": "RUNNING", "shapeConfig": {"ocpus": 1, "memoryInGBs": 1}},
+     "shape": "VM.Standard.E2.1.Micro", "lifecycleState": "RUNNING", "shapeConfig": {"ocpus": 1, "memoryInGBs": 1},
+     "availabilityDomain": "Abcd:EU-AMSTERDAM-1-AD-1"},
 ]
 N = 2016  # 7 days of 5-minute points
+
+# Boot volume backups, kept while the mock runs: created AVAILABLE on the second look.
+# MOCK_OTHER_BACKUPS=n adds n untagged backups that keeper must never delete.
+BACKUPS = [
+    {"id": f"ocid1.bootvolumebackup.oc1..other{k}", "displayName": f"manual {k}", "bootVolumeId": "x",
+     "lifecycleState": "AVAILABLE", "timeCreated": "2026-01-0%dT00:00:00.000Z" % (k + 1), "freeformTags": {}}
+    for k in range(int(os.environ.get("MOCK_OTHER_BACKUPS", "0")))
+]
+SEEN = {}
+
+
+def boot_volume(instance_id):
+    return instance_id.replace("instance", "bootvolume") + "boot"
 
 
 def series(metric, instance):
@@ -56,14 +71,44 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, [i for i in INSTANCES if i["displayName"] != gone])
         elif path.endswith("/availabilityDomains"):
             self.reply(200, [{"name": "Abcd:EU-AMSTERDAM-1-AD-1"}])
+        elif path.endswith("/bootVolumeAttachments"):
+            iid = self.path.split("instanceId=")[-1].split("&")[0]
+            self.reply(200, [{"instanceId": iid, "bootVolumeId": boot_volume(iid), "lifecycleState": "ATTACHED"}])
+        elif path.endswith("/bootVolumeBackups"):
+            self.reply(200, BACKUPS)
+        elif "/bootVolumeBackups/" in path:
+            b = next((b for b in BACKUPS if b["id"] == path.rsplit("/", 1)[1]), None)
+            if b is None:
+                return self.reply(404, {"code": "NotAuthorizedOrNotFound", "message": path})
+            SEEN[b["id"]] = SEEN.get(b["id"], 0) + 1
+            if b["lifecycleState"] == "CREATING" and SEEN[b["id"]] > 1:
+                b["lifecycleState"] = "AVAILABLE"
+            self.reply(200, b)
+        elif path.endswith("/volumeBackups"):
+            self.reply(200, [])
         elif path.endswith("/bootVolumes"):
             self.reply(200, [{"id": "ocid1.bootvolume.oc1.eu-amsterdam-1.micro1boot", "displayName": "micro-1 (Boot Volume)",
                               "sizeInGBs": 47, "lifecycleState": "AVAILABLE"}])
         else:
             self.reply(404, {"code": "NotAuthorizedOrNotFound", "message": path})
 
+    def do_DELETE(self):
+        for b in BACKUPS:
+            if b["id"] == self.path.split("?")[0].rsplit("/", 1)[1]:
+                b["lifecycleState"] = "TERMINATED"
+                self.send_response(204)
+                self.end_headers()
+                return
+        self.reply(404, {"code": "NotAuthorizedOrNotFound", "message": self.path})
+
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))) or b"{}")
+        if self.path.split("?")[0].endswith("/bootVolumeBackups"):
+            b = {"id": f"ocid1.bootvolumebackup.oc1..keeper{len(BACKUPS)}", "displayName": body["displayName"],
+                 "bootVolumeId": body["bootVolumeId"], "lifecycleState": "CREATING",
+                 "timeCreated": "2026-11-10T%02d:00:00.000Z" % len(BACKUPS), "freeformTags": body.get("freeformTags", {})}
+            BACKUPS.append(b)
+            return self.reply(200, b)
         query = body.get("query", "")
         metric = query.split("[")[0]
         instance = query.split('resourceId = "')[-1].split('"')[0]

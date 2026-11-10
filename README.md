@@ -12,7 +12,8 @@ stopped or gone — on any account, pay-as-you-go included — and how close it 
 
 One binary, no OCI CLI, no Python. `check` reads 7 days of metrics for every instance in your home
 region and compares them with the idle rule; `watch` looks every hour and notifies you when something
-changes. **Read-only: it changes nothing in your account.**
+changes; `backup` keeps a boot volume backup within the 5 free. **`check` and `watch` are read-only;
+only `backup` (and `watch --backup`) changes anything in your account.**
 
 Part of [DeepLab](https://deeplab.tools) — small, sharp tools that run locally. A sibling of
 [oci-arm-catcher](https://github.com/deeplabua/oci-arm-catcher) (catch a free ARM instance) and
@@ -207,6 +208,46 @@ launchctl load ~/Library/LaunchAgents/tools.deeplab.oci-free-keeper.plist
 
 </details>
 
+## Backup
+
+If Oracle reclaims or terminates an instance, a boot volume backup brings it back exactly as it
+was. `backup` takes a full backup of each Always Free instance's boot volume and keeps the newest
+one per instance (`--keep N` for more). It never goes over the 5 free backups — boot and block
+together, yours included — and never touches a backup it did not make (it tags its own
+`managed-by: oci-free-keeper`). An older backup is deleted only after the new one is ready.
+
+`backup` is the only command that changes your account. See what it would do first:
+
+```sh
+oci-free-keeper backup --dry-run
+```
+
+Take the backups:
+
+```sh
+oci-free-keeper backup
+```
+
+Once a week from cron — `--if-older-than` skips an instance whose newest backup is recent:
+
+```sh
+crontab -e
+```
+
+```
+0 4 * * * /usr/local/bin/oci-free-keeper backup --if-older-than 7d
+```
+
+Or let `watch` do it, with a notification when a backup is ready or cannot be made:
+
+```sh
+oci-free-keeper watch --backup 7d
+```
+
+To restore: Console → Block Storage → Boot Volume Backups → the backup → Restore Boot Volume, then
+Compute → Create Instance → Boot volume → the restored volume. Exit codes: `0` done or nothing to
+do, `1` skipped to stay within the 5 free, `2` a backup failed, `3` could not run.
+
 ## Permissions
 
 Read-only. Checked on a real tenancy on 10 November 2026:
@@ -221,9 +262,21 @@ Allow group <your-group> to read metrics in tenancy
 OCID instead. The PAYG note needs the Organizations API (`inspect all-resources` covers it). For
 `watch` to find a gone instance's boot volume, add `Allow group <your-group> to inspect volumes in tenancy`.
 
+`backup` writes, so it needs more (checked on a real tenancy on 10 November 2026 — without
+`use volumes` OCI refuses to back up the volume):
+
+```
+Allow group <your-group> to inspect compartments in tenancy
+Allow group <your-group> to read instances in tenancy
+Allow group <your-group> to inspect volume-attachments in tenancy
+Allow group <your-group> to inspect volume-backups in tenancy
+Allow group <your-group> to manage boot-volume-backups in tenancy
+Allow group <your-group> to use volumes in tenancy
+```
+
 ## Not yet
 
-Boot-volume backups within the 5 free, and `--auto-start` for a stopped instance. See [`CHANGELOG.md`](CHANGELOG.md).
+`--auto-start` for a stopped instance. See [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Support
 

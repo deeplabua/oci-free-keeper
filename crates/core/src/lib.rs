@@ -11,6 +11,7 @@
 #![warn(missing_docs)]
 
 pub mod api;
+pub mod backup;
 pub mod model;
 pub mod report;
 pub mod rules;

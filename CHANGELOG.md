@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0 — 2026-11-10
+
+- `backup`: a full backup of each Always Free instance's boot volume, tagged
+  `managed-by: oci-free-keeper`. Keeps the newest `--keep` (default 1) of its own per instance and
+  deletes older ones only after the new one is ready; never touches other backups and never goes
+  above the 5 free (boot and block together). `--dry-run`, `--if-older-than 7d` for cron,
+  `--instance`. The first command that writes to the account.
+- `watch --backup 7d`: the same from the watch loop, with a notification when a backup is ready
+  or cannot be made.
+- README: the IAM policy `backup` needs, checked on a real tenancy.
+
 ## 0.2.0 — 2026-11-10
 
 - README: links to the other DeepLab OCI tools and the crate they share.

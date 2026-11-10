@@ -17,6 +17,9 @@ pub struct Instance {
     pub shape: String,
     /// `RUNNING`, `STOPPED`, ...
     pub lifecycle_state: String,
+    /// e.g. `Abcd:EU-AMSTERDAM-1-AD-1` — where its boot volume attachment is listed.
+    #[serde(default)]
+    pub availability_domain: Option<String>,
     /// OCPUs and memory.
     #[serde(default)]
     pub shape_config: Option<ShapeConfig>,

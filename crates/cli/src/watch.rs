@@ -36,6 +36,11 @@ pub struct WatchArgs {
     #[arg(long)]
     no_desktop: bool,
 
+    /// Also back up each Always Free instance's boot volume when its newest backup is older than
+    /// this, e.g. 7d — like `backup --if-older-than 7d --keep 1`. Off by default: it writes.
+    #[arg(long, env = "OCI_FREE_KEEPER_BACKUP", value_name = "DURATION")]
+    backup: Option<String>,
+
     /// Warn when the busiest metric is below this, percent (the rule's line is 20).
     #[arg(long, env = "OCI_FREE_KEEPER_WARN_THRESHOLD", default_value_t = rules::DEFAULT_WARN_PERCENT, value_name = "PERCENT")]
     warn_threshold: f64,
@@ -44,6 +49,9 @@ pub struct WatchArgs {
 /// Run the loop (or one look with `--once`). Returns the exit code.
 pub fn run(client: &Client, args: &WatchArgs) -> Result<u8> {
     let every = parse_duration(&args.interval)?;
+    if let Some(b) = &args.backup {
+        parse_duration(b)?;
+    }
     let state_path =
         state_file(client.tenancy()).context("cannot find a cache folder for the watch state")?;
     let notify = Notifier {
@@ -123,7 +131,29 @@ fn look(client: &Client, args: &WatchArgs, state_path: &PathBuf, notify: &Notifi
     }
     std::fs::write(state_path, serde_json::to_string_pretty(&now)?)
         .with_context(|| format!("cannot save the watch state to {}", state_path.display()))?;
-    Ok(if events.iter().any(Event::urgent) {
+    let mut backup_code = 0;
+    if let Some(age) = &args.backup {
+        let b = crate::backup::BackupArgs {
+            instance: None,
+            keep: 1,
+            if_older_than: Some(age.clone()),
+            dry_run: false,
+        };
+        match crate::backup::run(client, &b) {
+            Ok(outcome) => {
+                backup_code = outcome.code;
+                for line in &outcome.news {
+                    notify.send(line, outcome.code > 0);
+                }
+            }
+            Err(e) => {
+                eprintln!("  backup: {e:#}");
+                notify.send(&format!("backup could not run: {e}"), true);
+                backup_code = 2;
+            }
+        }
+    }
+    Ok(if events.iter().any(Event::urgent) || backup_code == 2 {
         2
     } else {
         report.exit_code().min(1)
@@ -179,7 +209,7 @@ fn state_file(tenancy: &str) -> Option<PathBuf> {
 }
 
 /// `90s`, `30m`, `1h`, `1d` — at least one minute.
-fn parse_duration(text: &str) -> Result<Duration> {
+pub(crate) fn parse_duration(text: &str) -> Result<Duration> {
     let text = text.trim();
     let split = text
         .find(|c: char| !c.is_ascii_digit())
