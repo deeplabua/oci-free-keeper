@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use anyhow::{Context as _, Result, bail};
 use clap::Args as ClapArgs;
-use oci_free_keeper_core::watch::{Event, State, diff, state_of};
+use oci_free_keeper_core::watch::{Event, State, diff, state_of, to_start};
 use oci_free_keeper_core::{api, report, rules, time};
 use oci_request_signer::Client;
 
@@ -36,6 +36,11 @@ pub struct WatchArgs {
     #[arg(long)]
     no_desktop: bool,
 
+    /// Start an Always Free instance again when it stops while watched (Oracle stops idle ones).
+    /// Writes to the account. Tag an instance `oci-free-keeper: no-auto-start` to leave it alone.
+    #[arg(long, env = "OCI_FREE_KEEPER_AUTO_START")]
+    auto_start: bool,
+
     /// Also back up each Always Free instance's boot volume when its newest backup is older than
     /// this, e.g. 7d — like `backup --if-older-than 7d --keep 1`. Off by default: it writes.
     #[arg(long, env = "OCI_FREE_KEEPER_BACKUP", value_name = "DURATION")]
@@ -47,13 +52,21 @@ pub struct WatchArgs {
 }
 
 /// Run the loop (or one look with `--once`). Returns the exit code.
-pub fn run(client: &Client, args: &WatchArgs) -> Result<u8> {
+pub fn run(client: &Client, profile: &str, args: &WatchArgs) -> Result<u8> {
     let every = parse_duration(&args.interval)?;
     if let Some(b) = &args.backup {
         parse_duration(b)?;
     }
-    let state_path =
-        state_file(client.tenancy()).context("cannot find a cache folder for the watch state")?;
+    let state_path = state_file(client.tenancy(), profile)
+        .context("cannot find a cache folder for the watch state")?;
+    // Before 0.4 the file had no profile in its name; it was the DEFAULT profile's in practice.
+    if !state_path.exists()
+        && profile == "DEFAULT"
+        && let Some(old) = legacy_state_file(client.tenancy())
+        && old.exists()
+    {
+        let _ = std::fs::rename(&old, &state_path);
+    }
     let notify = Notifier {
         desktop: !args.no_desktop,
         webhook: args.webhook.clone(),
@@ -123,6 +136,33 @@ fn look(client: &Client, args: &WatchArgs, state_path: &PathBuf, notify: &Notifi
         println!("  {} {text}", if event.urgent() { "✗" } else { "·" });
         if event.notify() {
             notify.send(&text, event.urgent());
+        }
+    }
+
+    if args.auto_start {
+        let opted_out: Vec<&str> = snapshot
+            .instances
+            .iter()
+            .filter(|o| o.instance.no_auto_start())
+            .map(|o| o.instance.id.as_str())
+            .collect();
+        for id in to_start(before.as_ref(), &now, &opted_out) {
+            let name = &now[id].name;
+            match api::start_instance(client, &snapshot.home_region, id) {
+                Ok(state) => {
+                    let text = format!(
+                        "{name} started again by --auto-start ({})",
+                        state.to_lowercase()
+                    );
+                    println!("  ↻ {text}");
+                    notify.send(&text, false);
+                }
+                Err(e) => {
+                    let text = format!("{name}: --auto-start failed — {e}");
+                    println!("  ✗ {text}");
+                    notify.send(&text, true);
+                }
+            }
         }
     }
 
@@ -197,8 +237,27 @@ fn stamp() -> String {
     format!("{} {}Z", &t[..10], &t[11..16])
 }
 
-/// One state file per tenancy, in the user's cache folder.
-fn state_file(tenancy: &str) -> Option<PathBuf> {
+/// One state file per tenancy and profile (another user may see other instances), in the user's
+/// cache folder.
+fn state_file(tenancy: &str, profile: &str) -> Option<PathBuf> {
+    let tail: String = tenancy
+        .chars()
+        .rev()
+        .take(12)
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
+    let profile: String = profile
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+    dirs::cache_dir().map(|d| {
+        d.join("oci-free-keeper")
+            .join(format!("watch-{tail}-{profile}.json"))
+    })
+}
+
+/// The state file of 0.2 and 0.3: per tenancy only.
+fn legacy_state_file(tenancy: &str) -> Option<PathBuf> {
     let tail: String = tenancy
         .chars()
         .rev()
@@ -325,9 +384,13 @@ mod tests {
 
     #[test]
     fn one_state_file_per_tenancy() {
-        let a = state_file("ocid1.tenancy.oc1..aaaaaaaabbbbcccc").unwrap();
-        let b = state_file("ocid1.tenancy.oc1..aaaaaaaabbbbdddd").unwrap();
+        let a = state_file("ocid1.tenancy.oc1..aaaaaaaabbbbcccc", "DEFAULT").unwrap();
+        let b = state_file("ocid1.tenancy.oc1..aaaaaaaabbbbdddd", "DEFAULT").unwrap();
         assert_ne!(a, b);
+        assert_ne!(
+            a,
+            state_file("ocid1.tenancy.oc1..aaaaaaaabbbbcccc", "OTHER").unwrap()
+        );
         assert!(a.to_string_lossy().contains("oci-free-keeper"));
     }
 }

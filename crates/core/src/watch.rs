@@ -128,6 +128,30 @@ fn running(state: &str) -> bool {
     matches!(state, "RUNNING" | "STARTING" | "PROVISIONING")
 }
 
+/// Freeform tag that keeps `--auto-start` away from an instance: `oci-free-keeper: no-auto-start`.
+pub const NO_AUTO_START: (&str, &str) = ("oci-free-keeper", "no-auto-start");
+
+/// `--auto-start`: instances to start now — an Always Free shape, `STOPPED` now, and running or
+/// stopping at the last look. One stopped before `watch` first looked is left alone, and so is
+/// one in `opted_out` (by OCID). A start that fails is not retried: the next look sees it was
+/// already `STOPPED`.
+pub fn to_start<'a>(before: Option<&State>, now: &'a State, opted_out: &[&str]) -> Vec<&'a str> {
+    let Some(before) = before else {
+        return Vec::new();
+    };
+    now.iter()
+        .filter(|(id, is)| {
+            is.state == "STOPPED"
+                && crate::rules::is_free_shape(&is.shape)
+                && !opted_out.contains(&id.as_str())
+                && before
+                    .get(*id)
+                    .is_some_and(|was| running(&was.state) || was.state == "STOPPING")
+        })
+        .map(|(id, _)| id.as_str())
+        .collect()
+}
+
 /// Verdicts that describe a running instance's load; changes between others are noise.
 fn load_verdict(v: Verdict) -> bool {
     matches!(v, Verdict::Safe | Verdict::Close | Verdict::AtRisk)
@@ -278,6 +302,35 @@ mod tests {
         let events = diff(Some(&before), &now);
         assert!(matches!(events[0], Event::New { .. }));
         assert!(!events[0].notify());
+    }
+
+    #[test]
+    fn auto_start_only_what_stopped_while_watched() {
+        let micro = |state: &str| Seen {
+            shape: "VM.Standard.E2.1.Micro".into(),
+            ..seen("micro", state, Verdict::Stopped)
+        };
+        let paid = |state: &str| Seen {
+            shape: "VM.Standard.E4.Flex".into(),
+            ..seen("big", state, Verdict::Stopped)
+        };
+        let before = st(&[
+            ("a", seen("arm", "RUNNING", Verdict::Safe)),
+            ("b", micro("STOPPING")),
+            ("c", seen("spare", "STOPPED", Verdict::Stopped)),
+            ("d", paid("RUNNING")),
+            ("e", seen("mine", "RUNNING", Verdict::Safe)),
+        ]);
+        let now = st(&[
+            ("a", seen("arm", "STOPPED", Verdict::Stopped)),
+            ("b", micro("STOPPED")),
+            ("c", seen("spare", "STOPPED", Verdict::Stopped)),
+            ("d", paid("STOPPED")),
+            ("e", seen("mine", "STOPPED", Verdict::Stopped)),
+        ]);
+        // spare was stopped already, big is not Always Free, mine is opted out.
+        assert_eq!(to_start(Some(&before), &now, &["e"]), vec!["a", "b"]);
+        assert!(to_start(None, &now, &[]).is_empty());
     }
 
     #[test]

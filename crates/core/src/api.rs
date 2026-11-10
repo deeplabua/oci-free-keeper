@@ -253,6 +253,25 @@ pub fn create_backup(
     )
 }
 
+/// `InstanceAction START` — `--auto-start` only. The body must be empty: `{}` is refused with
+/// `400 Invalid typeId` (checked 10 November 2026). Returns the new lifecycle state.
+pub fn start_instance(client: &Client, region: &str, id: &str) -> Result<String> {
+    let v: Value = client
+        .in_region(region.to_owned())
+        .request(
+            Method::Post,
+            "iaas",
+            &format!("/20160918/instances/{}?action=START", encode(id)),
+            None,
+            &[],
+        )?
+        .json()?;
+    Ok(v["lifecycleState"]
+        .as_str()
+        .unwrap_or("STARTING")
+        .to_owned())
+}
+
 /// One backup, e.g. to wait until it is `AVAILABLE`.
 pub fn get_backup(client: &Client, region: &str, id: &str) -> Result<Backup> {
     client.in_region(region.to_owned()).get(

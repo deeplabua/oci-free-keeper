@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 — 2026-11-10
+
+- `watch --auto-start`: starts an Always Free instance again when it stops while watched — Oracle
+  stops idle ones. Never one that was stopped before `watch` first looked, never another shape;
+  the freeform tag `oci-free-keeper: no-auto-start` opts an instance out. A failed start is
+  notified, not retried.
+- The `watch` state file is per tenancy and profile now, so two profiles of one tenancy no longer
+  share it; the old file is taken over by the DEFAULT profile.
+
 ## 0.3.0 — 2026-11-10
 
 - `backup`: a full backup of each Always Free instance's boot volume, tagged

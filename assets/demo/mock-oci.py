@@ -33,6 +33,7 @@ BACKUPS = [
     for k in range(int(os.environ.get("MOCK_OTHER_BACKUPS", "0")))
 ]
 SEEN = {}
+STARTED = set()
 
 
 def boot_volume(instance_id):
@@ -67,8 +68,11 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, [])
         elif path.endswith("/instances"):
             # MOCK_GONE=micro-1 drops that instance, as if it was terminated or reclaimed.
+            # MOCK_STOPPED=micro-1 reports it STOPPED until something sends it START.
             gone = os.environ.get("MOCK_GONE", "")
-            self.reply(200, [i for i in INSTANCES if i["displayName"] != gone])
+            stopped = os.environ.get("MOCK_STOPPED", "")
+            self.reply(200, [dict(i, lifecycleState="STOPPED") if i["displayName"] == stopped and i["id"] not in STARTED else i
+                             for i in INSTANCES if i["displayName"] != gone])
         elif path.endswith("/availabilityDomains"):
             self.reply(200, [{"name": "Abcd:EU-AMSTERDAM-1-AD-1"}])
         elif path.endswith("/bootVolumeAttachments"):
@@ -102,7 +106,13 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(404, {"code": "NotAuthorizedOrNotFound", "message": self.path})
 
     def do_POST(self):
-        body = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))) or b"{}")
+        raw = self.rfile.read(int(self.headers.get("content-length", 0)))
+        if "action=START" in self.path:
+            if raw:  # OCI refuses a body here: 400 Invalid typeId
+                return self.reply(400, {"code": "InvalidParameter", "message": "Invalid typeId provided"})
+            STARTED.add(self.path.split("?")[0].rsplit("/", 1)[1])
+            return self.reply(200, {"lifecycleState": "STARTING"})
+        body = json.loads(raw or b"{}")
         if self.path.split("?")[0].endswith("/bootVolumeBackups"):
             b = {"id": f"ocid1.bootvolumebackup.oc1..keeper{len(BACKUPS)}", "displayName": body["displayName"],
                  "bootVolumeId": body["bootVolumeId"], "lifecycleState": "CREATING",

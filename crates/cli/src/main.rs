@@ -129,7 +129,7 @@ fn main() -> ExitCode {
 fn run(args: &Args) -> Result<u8> {
     let check = match &args.command {
         Some(Command::Check(c)) => c,
-        Some(Command::Watch(w)) => return watch::run(&client(args)?, w),
+        Some(Command::Watch(w)) => return watch::run(&client(args)?, &args.profile, w),
         Some(Command::Backup(b)) => return Ok(backup::run(&client(args)?, b)?.code),
         None => &args.check,
     };

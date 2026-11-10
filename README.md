@@ -13,7 +13,7 @@ stopped or gone — on any account, pay-as-you-go included — and how close it 
 One binary, no OCI CLI, no Python. `check` reads 7 days of metrics for every instance in your home
 region and compares them with the idle rule; `watch` looks every hour and notifies you when something
 changes; `backup` keeps a boot volume backup within the 5 free. **`check` and `watch` are read-only;
-only `backup` (and `watch --backup`) changes anything in your account.**
+only `backup`, `watch --backup` and `watch --auto-start` change anything in your account.**
 
 Part of [DeepLab](https://deeplab.tools) — small, sharp tools that run locally. A sibling of
 [oci-arm-catcher](https://github.com/deeplabua/oci-arm-catcher) (catch a free ARM instance) and
@@ -167,6 +167,18 @@ crontab -e
 0 * * * * /usr/local/bin/oci-free-keeper watch --once --no-desktop --webhook https://ntfy.sh/your-secret-topic
 ```
 
+Oracle stops an idle Always Free instance. `--auto-start` starts it again when it stops while
+`watch` is looking — only an Always Free shape, and never one that was already stopped when `watch`
+started. This writes to your account; to keep an instance you stop on purpose out of it, give it
+the freeform tag `oci-free-keeper` = `no-auto-start`:
+
+```sh
+oci-free-keeper watch --auto-start
+```
+
+If the start fails — for A1 often "out of host capacity" — you get a notification and keeper does
+not retry; [oci-arm-catcher](https://github.com/deeplabua/oci-arm-catcher) waits for capacity.
+
 <details><summary>systemd (Linux) and launchd (macOS)</summary>
 
 `~/.config/systemd/user/oci-free-keeper.service`:
@@ -274,9 +286,8 @@ Allow group <your-group> to manage boot-volume-backups in tenancy
 Allow group <your-group> to use volumes in tenancy
 ```
 
-## Not yet
-
-`--auto-start` for a stopped instance. See [`CHANGELOG.md`](CHANGELOG.md).
+`watch --auto-start` needs `Allow group <your-group> to use instances in tenancy` (checked the same
+day).
 
 ## Support
 

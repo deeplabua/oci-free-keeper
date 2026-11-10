@@ -20,6 +20,9 @@ pub struct Instance {
     /// e.g. `Abcd:EU-AMSTERDAM-1-AD-1` — where its boot volume attachment is listed.
     #[serde(default)]
     pub availability_domain: Option<String>,
+    /// Freeform tags, e.g. `oci-free-keeper: no-auto-start`.
+    #[serde(default)]
+    pub freeform_tags: std::collections::BTreeMap<String, String>,
     /// OCPUs and memory.
     #[serde(default)]
     pub shape_config: Option<ShapeConfig>,
@@ -51,6 +54,12 @@ impl Instance {
             .as_ref()
             .and_then(|c| c.ocpus)
             .unwrap_or(0.0)
+    }
+
+    /// Tagged `oci-free-keeper: no-auto-start`.
+    pub fn no_auto_start(&self) -> bool {
+        let (k, v) = crate::watch::NO_AUTO_START;
+        self.freeform_tags.get(k).map(String::as_str) == Some(v)
     }
 
     /// Not terminated.
