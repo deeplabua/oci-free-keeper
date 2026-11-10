@@ -10,6 +10,17 @@ fn pct(v: Option<f64>) -> String {
     v.map_or("—".into(), |v| format!("{v:.1}%"))
 }
 
+/// `✓ Safe (memory)`, `✗ At risk` — short enough for the table.
+fn verdict_cell(r: &Row) -> String {
+    match (r.verdict, r.busiest) {
+        (Verdict::Safe | Verdict::Close, Some((m, _))) => {
+            format!("{} {} ({m})", r.verdict.symbol(), r.verdict.label())
+        }
+        _ => format!("{} {}", r.verdict.symbol(), r.verdict.label()),
+    }
+}
+
+/// The longer explanation printed under the table for anything that needs attention.
 fn explain(r: &Row, warn: f64) -> String {
     match (r.verdict, r.busiest) {
         (Verdict::Safe, Some((m, _))) => format!("{m} keeps it busy"),
@@ -59,12 +70,7 @@ pub fn text(r: &Report) -> String {
                 pct(u.and_then(|u| u.cpu_p95)),
                 mem,
                 pct(u.and_then(|u| u.network_percent)),
-                format!(
-                    "{} {} — {}",
-                    row.verdict.symbol(),
-                    row.verdict.label(),
-                    explain(row, r.warn_percent)
-                ),
+                verdict_cell(row),
             ]
         })
         .collect();
@@ -100,6 +106,23 @@ pub fn text(r: &Report) -> String {
     }
     if r.instances.is_empty() {
         let _ = writeln!(out, "(no instances in the home region)");
+    }
+
+    let notes: Vec<String> = r
+        .instances
+        .iter()
+        .filter(|row| row.verdict != Verdict::Safe)
+        .map(|row| {
+            format!(
+                "  {} {}: {}",
+                row.verdict.symbol(),
+                row.name,
+                explain(row, r.warn_percent)
+            )
+        })
+        .collect();
+    if !notes.is_empty() {
+        let _ = writeln!(out, "\n{}", notes.join("\n"));
     }
 
     let short: Vec<String> = r

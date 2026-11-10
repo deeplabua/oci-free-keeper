@@ -1,22 +1,26 @@
+<p align="center"><img src=".github/oci-free-keeper-256.png" width="128" height="128" alt="oci-free-keeper icon"></p>
+
 # oci-free-keeper
 
-**Keep your Oracle Cloud Always Free instances from being reclaimed as idle.** Know how close each
-instance is to Oracle's idle rule — before Oracle does.
+[![CI](https://img.shields.io/github/actions/workflow/status/deeplabua/oci-free-keeper/ci.yml?branch=main&logo=github&label=CI)](https://github.com/deeplabua/oci-free-keeper/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/oci-free-keeper?label=crates.io&color=e37933)](https://crates.io/crates/oci-free-keeper)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/deeplabua/oci-free-keeper?style=flat&logo=github&label=Star)](https://github.com/deeplabua/oci-free-keeper/stargazers)
 
-One binary, no OCI CLI, no Python. It reads 7 days of metrics for every instance in your home
-region and compares them with the rule. **Read-only: it changes nothing in your account.**
+**Keep your Oracle Cloud instance.** After a long hunt for a free ARM instance, know how close it
+is to Oracle's idle rule — and, coming next, the moment it is stopped or gone, with a backup of its
+boot volume to bring it back.
+
+One binary, no OCI CLI, no Python. Today `check` reads 7 days of metrics for every instance in your
+home region and compares them with the idle rule. **Read-only: it changes nothing in your account.**
 
 Part of [DeepLab](https://deeplab.tools) — small, sharp tools that run locally. A sibling of
 [oci-arm-catcher](https://github.com/deeplabua/oci-arm-catcher) (catch a free ARM instance) and
 [oci-free-audit](https://github.com/deeplabua/oci-free-audit) (make sure it stays free).
 
-```
-oci-free-keeper · home region eu-amsterdam-1 · window 7 days
+![oci-free-keeper: one instance kept busy by memory, one idle by Oracle's rule](assets/demo.gif)
 
-INSTANCE     SHAPE                    STATE     CPU p95    MEM    NET   VERDICT
-arm-free-1   VM.Standard.A1.Flex      RUNNING      4.1%   31.2%   0.3%   ✓ Safe — memory keeps it busy
-micro-1      VM.Standard.E2.1.Micro   RUNNING     12.0%      —   2.1%   ✗ At risk — all metrics under 20%, idle by Oracle's rule
-```
+<sub>Recorded against a local mock of the OCI API (`assets/demo/`); the instances are made up.</sub>
 
 ## The rule
 
@@ -61,12 +65,34 @@ It uses the API key in `~/.oci/config` — the same one the OCI CLI and oci-arm-
 
 ## Use
 
+The report (same as `oci-free-keeper check`):
+
 ```sh
-oci-free-keeper                       # the report (same as `oci-free-keeper check`)
-oci-free-keeper --json                # for scripts and cron
-oci-free-keeper --warn-threshold 30   # a wider safety margin
-oci-free-keeper --instance arm        # only instances whose name or OCID contains "arm"
-oci-free-keeper --profile OTHER       # another profile in ~/.oci/config
+oci-free-keeper
+```
+
+As JSON, for scripts and cron:
+
+```sh
+oci-free-keeper --json
+```
+
+A wider safety margin than the default 25%:
+
+```sh
+oci-free-keeper --warn-threshold 30
+```
+
+Only instances whose name or OCID contains `arm`:
+
+```sh
+oci-free-keeper --instance arm
+```
+
+Another profile in `~/.oci/config`:
+
+```sh
+oci-free-keeper --profile OTHER
 ```
 
 Exit codes: `0` all safe, `1` close or unknown, `2` at risk or stopped, `3` could not run. Run it
@@ -87,8 +113,18 @@ OCID instead. The PAYG note needs the Organizations API (`inspect all-resources`
 
 ## Not yet
 
-`watch` (hourly, with notifications on changes), boot-volume backups within the free limit, and
-`--auto-start` for a stopped instance. See [`CHANGELOG.md`](CHANGELOG.md).
+`watch` — a notification the moment an instance is stopped or gone (any account, PAYG included),
+then on idle-verdict changes; boot-volume backups within the 5 free; `--auto-start` for a stopped
+instance. See [`CHANGELOG.md`](CHANGELOG.md).
+
+## Support
+
+If `oci-free-keeper` helped you keep your instance, two things help a lot:
+
+- ⭐ **[Star the repo](https://github.com/deeplabua/oci-free-keeper)** — it's how other people holding on to a free instance find it.
+- ☕ **[Buy me a coffee](https://send.monobank.ua/jar/4Hq7auheaa)** — if it saved you some time and you feel like it.
+
+Both are completely optional. The tool is free and always will be.
 
 ## License
 
