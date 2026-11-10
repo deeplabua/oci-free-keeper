@@ -1,0 +1,17 @@
+[package]
+name = "oci-free-keeper-core"
+description = "Engine behind oci-free-keeper: how close OCI Always Free instances are to Oracle's idle-reclamation rule"
+keywords = ["oci", "oracle-cloud", "free-tier", "monitoring", "idle"]
+categories = ["api-bindings", "command-line-utilities"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+oci-request-signer.workspace = true
+serde.workspace = true
+serde_json.workspace = true

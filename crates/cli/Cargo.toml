@@ -1,0 +1,23 @@
+[package]
+name = "oci-free-keeper"
+description = "Keep your Oracle Cloud Always Free instances from being reclaimed as idle — know how close they are, before Oracle does"
+keywords = ["oci", "oracle-cloud", "free-tier", "monitoring", "idle"]
+categories = ["command-line-utilities"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[[bin]]
+name = "oci-free-keeper"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+oci-free-keeper-core.workspace = true
+oci-request-signer.workspace = true
+serde_json.workspace = true
