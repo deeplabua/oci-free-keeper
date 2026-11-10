@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — 2026-11-10
+
+- Update notice: at most once a day the binary checks GitHub for a newer release and
+  prints how to upgrade — the command (brew, cargo or the installer) highlighted — on stderr.
+  It never delays a run by more than 1.5 s; off in CI, without a terminal, or with
+  `OCI_FREE_KEEPER_NO_UPDATE_CHECK=1`.
+
 ## 0.1.1 — 2026-11-10
 
 - `check`: the VERDICT column is short (`✓ Safe (memory)`, `✗ At risk`); explanations for anything
