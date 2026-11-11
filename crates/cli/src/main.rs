@@ -170,6 +170,8 @@ fn client(args: &Args) -> Result<Client> {
     let profile = Profile::load(&path, &args.profile)?;
     Ok(Client::builder(&profile)
         .user_agent(concat!("oci-free-keeper/", env!("CARGO_PKG_VERSION")))
+        // Oracle throttles bursts of list requests; wait and retry instead of failing the run.
+        .retry_throttled(3)
         // A local mock of the OCI API for tests and demos.
         .endpoint(std::env::var("OCI_FREE_KEEPER_ENDPOINT").ok())
         .build()?)

@@ -351,21 +351,7 @@ fn usage(
     })
 }
 
-/// GET a JSON array, following `opc-next-page`.
+/// GET a list, following `opc-next-page`.
 fn list_all<T: DeserializeOwned>(client: &Client, service: &str, path: &str) -> Result<Vec<T>> {
-    let mut all = Vec::new();
-    let mut page: Option<String> = None;
-    loop {
-        let sep = if path.contains('?') { '&' } else { '?' };
-        let url = match &page {
-            Some(p) => format!("{path}{sep}page={}", encode(p)),
-            None => path.to_owned(),
-        };
-        let resp = client.request(Method::Get, service, &url, None, &[])?;
-        all.extend(resp.json::<Vec<T>>()?);
-        match resp.header("opc-next-page") {
-            Some(next) if !next.is_empty() => page = Some(next.to_owned()),
-            _ => return Ok(all),
-        }
-    }
+    client.list(service, path)
 }

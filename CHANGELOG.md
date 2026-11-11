@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 — 2026-11-11
+
+- When Oracle throttles requests (429), `check`, `watch` and `backup` wait as Oracle asks and
+  retry up to 3 times instead of failing. Built on oci-request-signer 0.2.
+
 ## 0.4.0 — 2026-11-10
 
 - `watch --auto-start`: starts an Always Free instance again when it stops while watched — Oracle
