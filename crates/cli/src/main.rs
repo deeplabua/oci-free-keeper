@@ -73,6 +73,38 @@ struct Args {
         default_value = "DEFAULT"
     )]
     profile: String,
+
+    /// How to sign: an API key from the OCI config, or as the instance keeper runs on
+    /// (instance_principal: no key on disk; needs a dynamic group and a policy, see README).
+    #[arg(
+        long,
+        global = true,
+        env = "OCI_CLI_AUTH",
+        value_enum,
+        default_value = "api_key"
+    )]
+    auth: Auth,
+}
+
+/// `--auth`, named as the OCI CLI names them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum Auth {
+    /// An API key from the OCI config file.
+    #[value(name = "api_key")]
+    ApiKey,
+    /// The OCI instance keeper runs on.
+    #[value(name = "instance_principal")]
+    InstancePrincipal,
+}
+
+impl Args {
+    /// Who keeper signs as, for `watch`'s state file: the profile, or the instance.
+    fn identity(&self) -> &str {
+        match self.auth {
+            Auth::ApiKey => &self.profile,
+            Auth::InstancePrincipal => "instance-principal",
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -129,7 +161,7 @@ fn main() -> ExitCode {
 fn run(args: &Args) -> Result<u8> {
     let check = match &args.command {
         Some(Command::Check(c)) => c,
-        Some(Command::Watch(w)) => return watch::run(&client(args)?, &args.profile, w),
+        Some(Command::Watch(w)) => return watch::run(&client(args)?, args.identity(), w),
         Some(Command::Backup(b)) => return Ok(backup::run(&client(args)?, b)?.code),
         None => &args.check,
     };
@@ -159,8 +191,20 @@ fn run(args: &Args) -> Result<u8> {
     Ok(report.exit_code())
 }
 
-/// The signed OCI client for the chosen profile.
+/// What every client of keeper's has, however it signs.
+fn configure(b: oci_request_signer::ClientBuilder<'_>) -> oci_request_signer::ClientBuilder<'_> {
+    b.user_agent(concat!("oci-free-keeper/", env!("CARGO_PKG_VERSION")))
+        // Oracle throttles bursts of list requests; wait and retry instead of failing the run.
+        .retry_throttled(3)
+        // A local mock of the OCI API for tests and demos.
+        .endpoint(std::env::var("OCI_FREE_KEEPER_ENDPOINT").ok())
+}
+
+/// The signed OCI client for the chosen profile, or for the instance keeper runs on.
 fn client(args: &Args) -> Result<Client> {
+    if args.auth == Auth::InstancePrincipal {
+        return Ok(configure(Client::instance_principal()).build()?);
+    }
     let path = match &args.oci_config {
         Some(p) => p.clone(),
         None => {
@@ -168,11 +212,5 @@ fn client(args: &Args) -> Result<Client> {
         }
     };
     let profile = Profile::load(&path, &args.profile)?;
-    Ok(Client::builder(&profile)
-        .user_agent(concat!("oci-free-keeper/", env!("CARGO_PKG_VERSION")))
-        // Oracle throttles bursts of list requests; wait and retry instead of failing the run.
-        .retry_throttled(3)
-        // A local mock of the OCI API for tests and demos.
-        .endpoint(std::env::var("OCI_FREE_KEEPER_ENDPOINT").ok())
-        .build()?)
+    Ok(configure(Client::builder(&profile)).build()?)
 }

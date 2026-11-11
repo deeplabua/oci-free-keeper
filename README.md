@@ -179,6 +179,8 @@ oci-free-keeper watch --auto-start
 If the start fails — for A1 often "out of host capacity" — you get a notification and keeper does
 not retry; [oci-arm-catcher](https://github.com/deeplabua/oci-arm-catcher) waits for capacity.
 
+![oci-free-keeper watch --auto-start: micro-1 is stopped between two looks and started again](assets/watch.gif)
+
 <details><summary>systemd (Linux) and launchd (macOS)</summary>
 
 `~/.config/systemd/user/oci-free-keeper.service`:
@@ -227,6 +229,8 @@ was. `backup` takes a full backup of each Always Free instance's boot volume and
 one per instance (`--keep N` for more). It never goes over the 5 free backups — boot and block
 together, yours included — and never touches a backup it did not make (it tags its own
 `managed-by: oci-free-keeper`). An older backup is deleted only after the new one is ready.
+
+![oci-free-keeper backup: a new backup of each instance, the older one of keeper's own deleted](assets/backup.gif)
 
 `backup` is the only command that changes your account. See what it would do first:
 
@@ -288,6 +292,34 @@ Allow group <your-group> to use volumes in tenancy
 
 `watch --auto-start` needs `Allow group <your-group> to use instances in tenancy` (checked the same
 day).
+
+### On the instance itself, without an API key
+
+`watch` can run on the Always Free instance it guards, signing as that instance (an *instance
+principal*) — no OCI config and no API key on the machine. Create a dynamic group that matches the
+instance, e.g. `ANY {instance.id = '<instance OCID>'}`, and give it the same policies with
+`dynamic-group` in place of `group`:
+
+```
+Allow dynamic-group <your-dynamic-group> to inspect compartments in tenancy
+```
+
+```
+Allow dynamic-group <your-dynamic-group> to read instances in tenancy
+```
+
+```
+Allow dynamic-group <your-dynamic-group> to read metrics in tenancy
+```
+
+Then, on the instance:
+
+```sh
+oci-free-keeper watch --auth instance_principal
+```
+
+`OCI_CLI_AUTH=instance_principal` does the same, as it does for the OCI CLI. An instance watching
+itself cannot tell you it is gone — run `watch` somewhere else too if that matters.
 
 ## Support
 

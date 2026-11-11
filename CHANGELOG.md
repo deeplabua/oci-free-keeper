@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 — 2026-11-11
+
+- `--auth instance_principal` (or `OCI_CLI_AUTH=instance_principal`): run on the instance itself and
+  sign as it — no OCI config or API key on the machine. Needs a dynamic group and policies (README).
+- README: GIFs of `watch --auto-start` and `backup`, recorded against the demo mock.
+- Tests for the backup and start requests: what is sent and how the answers are read.
+
 ## 0.4.1 — 2026-11-11
 
 - When Oracle throttles requests (429), `check`, `watch` and `backup` wait as Oracle asks and

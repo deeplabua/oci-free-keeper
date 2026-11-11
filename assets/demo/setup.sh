@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Sourced (hidden) by demo.tape: a throwaway OCI profile, a mock OCI API on localhost,
-# and a clean prompt. Nothing here touches a real account.
+# and a clean prompt. Nothing here touches a real account. MOCK_* variables exported before
+# sourcing reach the mock (see mock-oci.py).
 #
 # Record from the repo root:
 #   cargo build --release
@@ -26,6 +27,8 @@ trap 'kill $MOCK_PID 2>/dev/null; rm -rf "$WORK"' EXIT
 export OCI_CONFIG_FILE="$WORK/oci-config"
 export OCI_FREE_KEEPER_ENDPOINT="http://127.0.0.1:8798"
 export PATH="$REPO/target/release:$PATH"
+# watch keeps its state in the cache directory: a throwaway one, not yours.
+export HOME="$WORK"
 cd "$WORK" || exit 1
 export PS1='\[\e[32m\]$\[\e[0m\] '
 sleep 0.5

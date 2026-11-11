@@ -32,6 +32,19 @@ BACKUPS = [
      "lifecycleState": "AVAILABLE", "timeCreated": "2026-01-0%dT00:00:00.000Z" % (k + 1), "freeformTags": {}}
     for k in range(int(os.environ.get("MOCK_OTHER_BACKUPS", "0")))
 ]
+# MOCK_OLD_BACKUPS=1 adds an older keeper backup of each instance, for `backup` to rotate.
+if os.environ.get("MOCK_OLD_BACKUPS"):
+    BACKUPS += [
+        {"id": f"ocid1.bootvolumebackup.oc1..old{k}", "displayName": f"{i['displayName']} 2026-11-03 (oci-free-keeper)",
+         "bootVolumeId": i["id"].replace("instance", "bootvolume") + "boot", "lifecycleState": "AVAILABLE",
+         "timeCreated": "2026-11-03T03:00:00.000Z", "freeformTags": {"managed-by": "oci-free-keeper"}}
+        for k, i in enumerate(INSTANCES)
+    ]
+# MOCK_BACKUP_WAIT=n: a new backup turns AVAILABLE on the (n+1)-th look (default 1; 0 for the GIF).
+BACKUP_WAIT = int(os.environ.get("MOCK_BACKUP_WAIT", "1"))
+# MOCK_STOP_AFTER=n: micro-1 is STOPPED from the (n+1)-th instance list on, until it gets START.
+STOP_AFTER = os.environ.get("MOCK_STOP_AFTER")
+LISTS = [0]
 SEEN = {}
 STARTED = set()
 
@@ -71,6 +84,9 @@ class Handler(BaseHTTPRequestHandler):
             # MOCK_STOPPED=micro-1 reports it STOPPED until something sends it START.
             gone = os.environ.get("MOCK_GONE", "")
             stopped = os.environ.get("MOCK_STOPPED", "")
+            LISTS[0] += 1
+            if STOP_AFTER is not None and LISTS[0] > int(STOP_AFTER):
+                stopped = "micro-1"
             self.reply(200, [dict(i, lifecycleState="STOPPED") if i["displayName"] == stopped and i["id"] not in STARTED else i
                              for i in INSTANCES if i["displayName"] != gone])
         elif path.endswith("/availabilityDomains"):
@@ -85,7 +101,7 @@ class Handler(BaseHTTPRequestHandler):
             if b is None:
                 return self.reply(404, {"code": "NotAuthorizedOrNotFound", "message": path})
             SEEN[b["id"]] = SEEN.get(b["id"], 0) + 1
-            if b["lifecycleState"] == "CREATING" and SEEN[b["id"]] > 1:
+            if b["lifecycleState"] == "CREATING" and SEEN[b["id"]] > BACKUP_WAIT:
                 b["lifecycleState"] = "AVAILABLE"
             self.reply(200, b)
         elif path.endswith("/volumeBackups"):
