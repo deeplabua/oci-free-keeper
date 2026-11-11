@@ -59,7 +59,20 @@ impl Report {
 
     /// Reclamation has not been seen on pay-as-you-go accounts (PRD, question 2).
     pub fn is_payg(&self) -> bool {
-        self.payment_model.as_deref() == Some("PAYG")
+        // Free text, not an enum: `PAYG` on a pay-as-you-go tenancy (10 November 2026); Oracle's
+        // SDK gives "Pay as you go" and "Monthly" as examples. Commitments are paid accounts too.
+        self.payment_model.as_deref().is_some_and(|model| {
+            let m = model.to_ascii_lowercase().replace(['-', '_'], " ");
+            [
+                "payg",
+                "pay as you go",
+                "monthly",
+                "annual",
+                "universal credit",
+            ]
+            .iter()
+            .any(|k| m.contains(k))
+        })
     }
 }
 

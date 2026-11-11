@@ -318,8 +318,11 @@ Then, on the instance:
 oci-free-keeper watch --auth instance_principal
 ```
 
-`OCI_CLI_AUTH=instance_principal` does the same, as it does for the OCI CLI. An instance watching
-itself cannot tell you it is gone — run `watch` somewhere else too if that matters.
+`OCI_CLI_AUTH=instance_principal` does the same, as it does for the OCI CLI. Checked on a real
+instance on 11 November 2026; a new policy took a few minutes to reach Monitoring — until then
+the metrics come back `NotAuthorizedOrNotFound`. Without `inspect all-resources` keeper cannot tell
+a pay-as-you-go account and leaves out the PAYG note. An instance watching itself cannot tell you
+it is gone — run `watch` somewhere else too if that matters.
 
 ## Support
 

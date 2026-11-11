@@ -145,7 +145,7 @@ pub fn text(r: &Report) -> String {
     if r.is_payg() && r.instances.iter().any(|row| row.verdict == Verdict::AtRisk) {
         let _ = writeln!(
             out,
-            "\nNote: this is a pay-as-you-go account. Oracle's idle rule is written for Always Free \
+            "\nNote: this is a paid account. Oracle's idle rule is written for Always Free \
              accounts, and reclamation has not been observed on PAYG — treat \"At risk\" as a heads-up."
         );
     }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 — 2026-11-11
+
+- The paid-account note also shows for commitment accounts ("Monthly", Universal Credits), not only `PAYG`.
+
 ## 0.5.0 — 2026-11-11
 
 - `--auth instance_principal` (or `OCI_CLI_AUTH=instance_principal`): run on the instance itself and
